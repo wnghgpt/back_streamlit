@@ -11,5 +11,6 @@ plotly>=5.17.0
 # Scientific computing
 scipy>=1.10.0
 
-# Database (face-db-core provides ORM and schema)
--e ../face-db-core
+# Database (using back_analysis database module)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0

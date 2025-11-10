@@ -13,9 +13,13 @@ from pathlib import Path
 from collections import Counter
 from itertools import combinations
 
-# Database (face-db-core)
-from face_db_core import DatabaseManager
-from face_db_core.data_handler import crud_service
+# Database (back_analysis)
+import sys
+import os
+sys.path.insert(0, "/home/web_app/back_analysis/src")
+
+from database.connection import DatabaseManager
+from database.crud import crud_service
 
 # Initialize db_manager
 db_manager = DatabaseManager()
