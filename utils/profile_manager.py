@@ -12,7 +12,7 @@ import sys
 # back_analysis import
 sys.path.insert(0, "/home/wavus/새 폴더/back_analysis/src")
 from database.connection import DatabaseManager
-from database.models import ReferenceProfile
+from database.models import ReferenceProfile, ReferenceAnalysisData
 
 
 def get_all_profiles_with_images(sort_by="최신순"):
@@ -29,7 +29,7 @@ def get_all_profiles_with_images(sort_by="최신순"):
         elif sort_by == "오래된순":
             query = query.order_by(ReferenceProfile.upload_date.asc())
         elif sort_by == "이름순":
-            query = query.order_by(ReferenceProfile.name.asc())
+            query = query.order_by(ReferenceProfile.full_name.asc())
         elif sort_by == "ID순":
             query = query.order_by(ReferenceProfile.id.desc())
 
@@ -40,12 +40,10 @@ def get_all_profiles_with_images(sort_by="최신순"):
         for profile in profiles:
             result.append({
                 'id': profile.id,
-                'name': profile.name,
+                'name': getattr(profile, 'full_name', None) or getattr(profile, 'name', ''),
                 'image_file_path': profile.image_file_path,
-                'json_file_path': profile.json_file_path,
                 'upload_date': profile.upload_date,
-                'landmarks_json': profile.landmarks_json,
-                'ratios_json': profile.ratios_json
+                'landmarks_json': getattr(profile, 'landmarks_json', None)
             })
 
         return result
@@ -63,28 +61,31 @@ def get_profile_by_id(profile_id):
 
         # 관련 데이터 카운트
         tags_count = len(profile.tags) if profile.tags else 0
-        landmarks_count = len(profile.landmarks_points) if profile.landmarks_points else 0
+        # 스냅샷 기반 랜드마크 카운트
+        snap = session.query(ReferenceAnalysisData).filter_by(profile_id=profile_id, is_latest=True).first()
+        if snap and snap.data_json and isinstance(snap.data_json.get('landmarks'), list):
+            landmarks_count = sum(1 for v in snap.data_json['landmarks'] if v is not None)
+        else:
+            landmarks_count = 0
         ratios_count = len(profile.basic_ratio) if profile.basic_ratio else 0
 
         return {
             'id': profile.id,
-            'name': profile.name,
-            'full_name': profile.full_name if hasattr(profile, 'full_name') else profile.name,
+            'name': (profile.full_name if hasattr(profile, 'full_name') and profile.full_name else getattr(profile, 'name', '')),
+            'full_name': profile.full_name if hasattr(profile, 'full_name') else getattr(profile, 'name', ''),
             'last_name': profile.last_name if hasattr(profile, 'last_name') else "",
             'first_name': profile.first_name if hasattr(profile, 'first_name') else "",
             'romanized_name': profile.romanized_name if hasattr(profile, 'romanized_name') else "",
             'image_file_path': profile.image_file_path,
-            'json_file_path': profile.json_file_path,
             'upload_date': profile.upload_date,
-            'landmarks_json': profile.landmarks_json,
-            'ratios_json': profile.ratios_json,
+            'landmarks_json': None,
             'tags_count': tags_count,
             'landmarks_count': landmarks_count,
             'ratios_count': ratios_count
         }
 
 
-def update_profile(profile_id, name=None, json_file_path=None, image_file_path=None):
+def update_profile(profile_id, name=None, image_file_path=None):
     """프로필 정보 업데이트 (이름 변경 시 자동 파싱)"""
     db_manager = DatabaseManager()
 
@@ -108,14 +109,12 @@ def update_profile(profile_id, name=None, json_file_path=None, image_file_path=N
                 last_name = ""
                 first_name = ""
 
-            profile.name = full_name
+            # ReferenceProfile에는 name 필드가 없고 full_name을 사용합니다
             profile.full_name = full_name
             profile.last_name = last_name
             profile.first_name = first_name
             profile.romanized_name = romanized
 
-        if json_file_path is not None:
-            profile.json_file_path = json_file_path
         if image_file_path is not None:
             profile.image_file_path = image_file_path
 
@@ -206,7 +205,6 @@ def show_profile_modal(profile_id):
             st.text_input("로마자 표기 (Romanized)", value=profile.get('romanized_name', ''), key=f"view_romanized_{profile_id}", disabled=True)
             st.caption("*파일명에 사용: processed_{romanized}_{uuid}.jpg")
 
-        new_json_path = st.text_input("JSON 경로", value=profile['json_file_path'] or "", key=f"edit_json_{profile_id}")
         new_image_path = st.text_input("이미지 경로", value=profile['image_file_path'] or "", key=f"edit_image_{profile_id}")
 
         st.divider()
@@ -236,7 +234,6 @@ def show_profile_modal(profile_id):
             result = update_profile(
                 profile_id,
                 name=new_name,
-                json_file_path=new_json_path if new_json_path else None,
                 image_file_path=new_image_path if new_image_path else None
             )
 

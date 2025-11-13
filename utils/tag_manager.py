@@ -103,7 +103,7 @@ def get_all_profiles_with_images(sort_by="최신순"):
         elif sort_by == "오래된순":
             query = query.order_by(ReferenceProfile.upload_date.asc())
         elif sort_by == "이름순":
-            query = query.order_by(ReferenceProfile.name.asc())
+            query = query.order_by(ReferenceProfile.full_name.asc())
         elif sort_by == "ID순":
             query = query.order_by(ReferenceProfile.id.desc())
 
@@ -114,7 +114,7 @@ def get_all_profiles_with_images(sort_by="최신순"):
         for profile in profiles:
             result.append({
                 'id': profile.id,
-                'name': profile.name,
+                'name': getattr(profile, 'full_name', None) or getattr(profile, 'name', ''),
                 'image_file_path': profile.image_file_path,
                 'upload_date': profile.upload_date
             })
@@ -197,7 +197,7 @@ def sync_json_to_db(json_path):
     with db_manager.get_session() as session:
         # DB에서 모든 프로필 조회 (이름 매핑용)
         all_profiles = session.query(ReferenceProfile).all()
-        id_to_name = {p.id: p.name for p in all_profiles}
+        id_to_name = {p.id: (getattr(p, 'full_name', None) or getattr(p, 'name', str(p.id))) for p in all_profiles}
 
         added_count = 0
         removed_count = 0

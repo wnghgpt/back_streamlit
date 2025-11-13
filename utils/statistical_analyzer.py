@@ -21,78 +21,55 @@ import plotly.graph_objects as go
 from database.connection import DatabaseManager
 from database.models import (
     ReferenceProfile,
-    ReferenceAtomicMeasurement,
-    ReferenceDerivedMeasurement,
-    ReferenceTag
+    ReferenceTag,
+    ReferenceAnalysisData,
 )
 
 
 # ==================== 데이터 로딩 ====================
 
 def get_available_atomic_measurements() -> List[Dict]:
-    """
-    DB에서 사용 가능한 atomic measurement 목록 반환
-
-    Returns:
-        [
-            {"display": "eye-width-left (length)", "name": "eye-width-left", "type": "length", "side": "left"},
-            ...
-        ]
-    """
+    """스냅샷(JSONB) 기반 사용 가능한 atomic 목록 반환"""
     db_manager = DatabaseManager()
     with db_manager.get_session() as session:
-        # distinct measurement_name, measurement_type, side 조합 가져오기
-        atomics = session.query(
-            ReferenceAtomicMeasurement.measurement_name,
-            ReferenceAtomicMeasurement.measurement_type,
-            ReferenceAtomicMeasurement.side
-        ).distinct().all()
-
-        result = []
-        for a in atomics:
-            side_str = f" ({a.side})" if a.side else ""
-            display = f"{a.measurement_name}{side_str} [{a.measurement_type}]"
-            result.append({
-                "display": display,
-                "name": a.measurement_name,
-                "type": a.measurement_type,
-                "side": a.side
-            })
-
-        return sorted(result, key=lambda x: x['display'])
+        snaps = session.query(ReferenceAnalysisData).filter(ReferenceAnalysisData.is_latest.is_(True)).all()
+        keys = {}
+        for s in snaps:
+            atomic = (s.data_json or {}).get('atomic') or {}
+            for name, meta in atomic.items():
+                # side는 키에 포함되어 있을 가능성이 높음. meta에도 있으면 사용.
+                side = meta.get('side')
+                display = f"{name}{f' ({side})' if side else ''}"
+                keys[name] = {
+                    'display': display,
+                    'name': name,
+                    'type': meta.get('measurement_type'),  # 대부분 None일 수 있음
+                    'side': side,
+                }
+        return sorted(keys.values(), key=lambda x: x['display'])
 
 
 def get_available_derived_measurements() -> List[Dict]:
-    """
-    DB에서 사용 가능한 derived measurement 목록 반환
-
-    Returns:
-        [
-            {"display": "forehead-to-midface (face-vertical)", "name": "forehead-to-midface", "category": "face-vertical"},
-            ...
-        ]
-    """
+    """스냅샷(JSONB) 기반 사용 가능한 derived 목록 반환"""
     db_manager = DatabaseManager()
     with db_manager.get_session() as session:
-        deriveds = session.query(
-            ReferenceDerivedMeasurement.ratio_name,
-            ReferenceDerivedMeasurement.category,
-            ReferenceDerivedMeasurement.side
-        ).distinct().all()
-
-        result = []
-        for d in deriveds:
-            side_str = f" ({d.side})" if d.side else ""
-            cat_str = f" [{d.category}]" if d.category else ""
-            display = f"{d.ratio_name}{side_str}{cat_str}"
-            result.append({
-                "display": display,
-                "name": d.ratio_name,
-                "category": d.category,
-                "side": d.side
-            })
-
-        return sorted(result, key=lambda x: x['display'])
+        snaps = session.query(ReferenceAnalysisData).filter(ReferenceAnalysisData.is_latest.is_(True)).all()
+        keys = {}
+        for s in snaps:
+            derived = (s.data_json or {}).get('derived') or {}
+            for name, meta in derived.items():
+                side = meta.get('side')
+                cat = meta.get('category')
+                side_str = f" ({side})" if side else ""
+                cat_str = f" [{cat}]" if cat else ""
+                display = f"{name}{side_str}{cat_str}"
+                keys[name] = {
+                    'display': display,
+                    'name': name,
+                    'category': cat,
+                    'side': side,
+                }
+        return sorted(keys.values(), key=lambda x: x['display'])
 
 
 def get_available_tags() -> List[str]:
@@ -124,9 +101,11 @@ def prepare_statistical_dataset(independent_vars: List[Dict], target_tag: str) -
     """
     db_manager = DatabaseManager()
     with db_manager.get_session() as session:
-        # 모든 profile_id 가져오기
-        all_profiles = session.query(ReferenceProfile.id).all()
-        profile_ids = [p.id for p in all_profiles]
+        # 모든 profile_id + 최신 스냅샷 로드
+        profiles = session.query(ReferenceProfile.id).all()
+        profile_ids = [p.id for p in profiles]
+        snaps = session.query(ReferenceAnalysisData).filter(ReferenceAnalysisData.is_latest.is_(True)).all()
+        snap_map = {s.profile_id: (s.data_json or {}) for s in snaps}
 
         # DataFrame 초기화
         df = pd.DataFrame({'profile_id': profile_ids})
@@ -134,69 +113,70 @@ def prepare_statistical_dataset(independent_vars: List[Dict], target_tag: str) -
         # 독립 변수 추가
         for idx, var in enumerate(independent_vars):
             col_name = f"var_{idx}"
+            vtype = var.get('type')
 
-            if var['type'] == 'atomic':
-                # Atomic measurement 값 추가
-                query = session.query(
-                    ReferenceAtomicMeasurement.profile_id,
-                    ReferenceAtomicMeasurement.value
-                ).filter(
-                    ReferenceAtomicMeasurement.measurement_name == var['name']
-                )
+            if vtype == 'atomic':
+                name = var.get('name')
+                side = var.get('side')
+                # key 규칙: name에 side 미포함이면 suffix로 추가
+                def build_key(n, s):
+                    if not s:
+                        return n
+                    if n.endswith('-left') or n.endswith('-right') or n.endswith('-center'):
+                        return n
+                    return f"{n}-{s}"
+                key = build_key(name, side)
+                values = {}
+                for pid in profile_ids:
+                    data = snap_map.get(pid) or {}
+                    atomic = data.get('atomic') or {}
+                    meta = atomic.get(key)
+                    if meta and meta.get('value') is not None:
+                        try:
+                            values[pid] = float(meta['value'])
+                        except Exception:
+                            pass
+                df[col_name] = df['profile_id'].map(values)
 
-                # side 조건 추가
-                if var.get('side'):
-                    query = query.filter(ReferenceAtomicMeasurement.side == var['side'])
+            elif vtype == 'derived':
+                name = var.get('name')
+                side = var.get('side')
+                def build_key(n, s):
+                    if not s:
+                        return n
+                    if n.endswith('-left') or n.endswith('-right') or n.endswith('-center'):
+                        return n
+                    return f"{n}-{s}"
+                key = build_key(name, side)
+                values = {}
+                for pid in profile_ids:
+                    data = snap_map.get(pid) or {}
+                    derived = data.get('derived') or {}
+                    meta = derived.get(key)
+                    if meta and meta.get('value') is not None:
+                        try:
+                            values[pid] = float(meta['value'])
+                        except Exception:
+                            pass
+                df[col_name] = df['profile_id'].map(values)
 
-                atomic_data = query.all()
-                atomic_dict = {a.profile_id: float(a.value) for a in atomic_data}
-                df[col_name] = df['profile_id'].map(atomic_dict)
-
-            elif var['type'] == 'derived':
-                # Derived measurement 값 추가
-                query = session.query(
-                    ReferenceDerivedMeasurement.profile_id,
-                    ReferenceDerivedMeasurement.ratio_value
-                ).filter(
-                    ReferenceDerivedMeasurement.ratio_name == var['name']
-                )
-
-                # side 조건 추가
-                if var.get('side'):
-                    query = query.filter(ReferenceDerivedMeasurement.side == var['side'])
-
-                derived_data = query.all()
-                derived_dict = {d.profile_id: float(d.ratio_value) for d in derived_data}
-                df[col_name] = df['profile_id'].map(derived_dict)
-
-            elif var['type'] == 'tag':
+            elif vtype == 'tag':
                 # Tag 보유 여부 (0 or 1)
                 tag_data = session.query(
                     ReferenceTag.profile_id
                 ).filter(
                     ReferenceTag.tag_name == var['name']
                 ).all()
-
                 tag_profile_ids = {t.profile_id for t in tag_data}
-                df[col_name] = df['profile_id'].apply(
-                    lambda pid: 1 if pid in tag_profile_ids else 0
-                )
+                df[col_name] = df['profile_id'].apply(lambda pid: 1 if pid in tag_profile_ids else 0)
 
         # 종속 변수 (target) 추가
-        target_data = session.query(
-            ReferenceTag.profile_id
-        ).filter(
-            ReferenceTag.tag_name == target_tag
-        ).all()
-
+        target_data = session.query(ReferenceTag.profile_id).filter(ReferenceTag.tag_name == target_tag).all()
         target_profile_ids = {t.profile_id for t in target_data}
-        df['target'] = df['profile_id'].apply(
-            lambda pid: 1 if pid in target_profile_ids else 0
-        )
+        df['target'] = df['profile_id'].apply(lambda pid: 1 if pid in target_profile_ids else 0)
 
         # NaN이 있는 행 제거
         df = df.dropna()
-
         return df
 
 
