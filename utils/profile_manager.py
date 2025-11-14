@@ -9,6 +9,9 @@ from PIL import Image
 from datetime import datetime
 import sys
 
+# 한글 이름 파서 (back_streamlit/utils 내부)
+from utils.korean_name_parser import parse_korean_name, romanize_korean_name
+
 # back_analysis import
 sys.path.insert(0, "/home/wavus/새 폴더/back_analysis/src")
 from database.connection import DatabaseManager
@@ -97,10 +100,7 @@ def update_profile(profile_id, name=None, image_file_path=None):
 
         # 업데이트
         if name is not None:
-            # 한글 이름 파싱
-            sys.path.insert(0, "/home/wavus/새 폴더/back_analysis/src")
-            from utils.korean_name_parser import parse_korean_name, romanize_korean_name
-
+            # 한글 이름 파싱 (파일 상단에서 import됨)
             full_name, last_name, first_name = parse_korean_name(name)
             romanized = romanize_korean_name(name)
 
@@ -192,18 +192,32 @@ def show_profile_modal(profile_id):
         # 편집 가능한 필드
         new_name = st.text_input("전체 이름", value=profile.get('full_name') or profile['name'], key=f"edit_name_{profile_id}")
 
-        # 성/이름/로마자 표시 (읽기 전용)
-        if profile.get('last_name') or profile.get('first_name'):
+        # 실시간 파싱 미리보기
+        if new_name and new_name != (profile.get('full_name') or profile['name']):
+            preview_full, preview_last, preview_first = parse_korean_name(new_name)
+            preview_romanized = romanize_korean_name(new_name)
+
+            st.info("🔄 **저장 시 자동 적용될 값:**")
             col_a, col_b = st.columns(2)
             with col_a:
-                st.text_input("성", value=profile.get('last_name', ''), key=f"view_last_{profile_id}", disabled=True)
+                st.text_input("성 (미리보기)", value=preview_last, key=f"preview_last_{profile_id}", disabled=True)
             with col_b:
-                st.text_input("이름", value=profile.get('first_name', ''), key=f"view_first_{profile_id}", disabled=True)
-            st.caption("*성/이름은 자동 파싱되며 직접 수정할 수 없습니다.")
+                st.text_input("이름 (미리보기)", value=preview_first, key=f"preview_first_{profile_id}", disabled=True)
+            st.text_input("로마자 표기 (미리보기)", value=preview_romanized, key=f"preview_romanized_{profile_id}", disabled=True)
+        else:
+            # 현재 저장된 값 표시
+            if profile.get('last_name') or profile.get('first_name'):
+                st.markdown("**현재 저장된 값:**")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.text_input("성", value=profile.get('last_name', ''), key=f"view_last_{profile_id}", disabled=True)
+                with col_b:
+                    st.text_input("이름", value=profile.get('first_name', ''), key=f"view_first_{profile_id}", disabled=True)
+                st.caption("*성/이름은 자동 파싱되며 직접 수정할 수 없습니다.")
 
-        if profile.get('romanized_name'):
-            st.text_input("로마자 표기 (Romanized)", value=profile.get('romanized_name', ''), key=f"view_romanized_{profile_id}", disabled=True)
-            st.caption("*파일명에 사용: processed_{romanized}_{uuid}.jpg")
+            if profile.get('romanized_name'):
+                st.text_input("로마자 표기 (Romanized)", value=profile.get('romanized_name', ''), key=f"view_romanized_{profile_id}", disabled=True)
+                st.caption("*파일명에 사용: processed_{romanized}_{uuid}.jpg")
 
         new_image_path = st.text_input("이미지 경로", value=profile['image_file_path'] or "", key=f"edit_image_{profile_id}")
 
@@ -238,8 +252,8 @@ def show_profile_modal(profile_id):
             )
 
             if result['success']:
-                st.success(result['message'])
-                st.rerun()
+                st.success("✅ " + result['message'])
+                st.info("💡 모달을 닫고 다시 열면 업데이트된 정보를 확인할 수 있습니다.")
             else:
                 st.error(result['message'])
 
@@ -293,7 +307,44 @@ def render_profile_management_ui():
         end_idx = min(start_idx + page_size, len(all_profiles))
 
     # 5. 이미지 그리드 (6열)
-    st.markdown("### 🖼️ 프로필 관리")
+    # 제목 + 전체선택 체크박스
+    title_col1, title_col2 = st.columns([5, 1])
+    with title_col1:
+        st.markdown("### 🖼️ 프로필 관리")
+    with title_col2:
+        # 현재 페이지의 프로필 ID들
+        current_page_ids = {profile['id'] for profile in all_profiles[start_idx:end_idx]}
+
+        # 현재 페이지의 모든 항목이 선택되었는지 확인
+        all_selected = current_page_ids.issubset(st.session_state.profiles_to_delete) if current_page_ids else False
+
+        # 전체선택 체크박스
+        select_all = st.checkbox(
+            "전체선택",
+            value=all_selected,
+            key="select_all_profiles",
+            help="현재 페이지의 모든 프로필 선택/해제"
+        )
+
+        # 전체선택 상태가 변경되었는지 확인
+        prev_select_all = st.session_state.get('prev_select_all', all_selected)
+
+        if select_all != prev_select_all:
+            if select_all:
+                # 현재 페이지의 모든 프로필 ID 추가
+                for profile in all_profiles[start_idx:end_idx]:
+                    st.session_state.profiles_to_delete.add(profile['id'])
+                    # 개별 체크박스의 session_state도 업데이트
+                    st.session_state[f"delete_{profile['id']}"] = True
+            else:
+                # 현재 페이지의 모든 프로필 ID 제거
+                for profile in all_profiles[start_idx:end_idx]:
+                    st.session_state.profiles_to_delete.discard(profile['id'])
+                    # 개별 체크박스의 session_state도 업데이트
+                    st.session_state[f"delete_{profile['id']}"] = False
+
+            st.session_state.prev_select_all = select_all
+            st.rerun()
 
     # 6개씩 행으로 묶기
     for row_start in range(start_idx, end_idx, 6):
@@ -313,37 +364,43 @@ def render_profile_management_ui():
                 if image_path and os.path.exists(image_path):
                     try:
                         image = Image.open(image_path)
-                        # 이미지 클릭 시 모달 (버튼으로 구현)
-                        if st.button(
-                            "🔍",
-                            key=f"view_{profile['id']}",
-                            use_container_width=True,
-                            help="클릭하여 상세보기"
-                        ):
-                            show_profile_modal(profile['id'])
-
                         st.image(image, use_container_width=True)
                     except Exception as e:
                         st.error(f"이미지 로드 실패")
                 else:
                     st.warning("이미지 없음")
 
-                # 프로필 정보
-                st.markdown(f"**{profile['name']}**")
+                # 프로필 정보 (체크박스 + 이름 + 수정버튼)
+                # 수평 정렬을 위해 균형 잡힌 비율 사용
+                info_col1, info_col2, info_col3 = st.columns([0.8, 4.4, 0.8])
+
+                with info_col1:
+                    # 삭제 체크박스 - session_state 키가 없으면 초기화
+                    checkbox_key = f"delete_{profile['id']}"
+                    if checkbox_key not in st.session_state:
+                        st.session_state[checkbox_key] = (profile['id'] in st.session_state.profiles_to_delete)
+
+                    is_checked = st.checkbox(
+                        "",
+                        key=checkbox_key,
+                        label_visibility="collapsed"
+                    )
+
+                    # 체크 상태 업데이트
+                    if is_checked:
+                        st.session_state.profiles_to_delete.add(profile['id'])
+                    else:
+                        st.session_state.profiles_to_delete.discard(profile['id'])
+
+                with info_col2:
+                    # 수직 중앙 정렬을 위해 약간의 패딩 추가
+                    st.markdown(f"<div style='padding-top: 5px;'><b>{profile['name']}</b></div>", unsafe_allow_html=True)
+
+                with info_col3:
+                    if st.button("✏️", key=f"edit_{profile['id']}", help="수정"):
+                        show_profile_modal(profile['id'])
+
                 st.caption(f"ID: {profile['id']}")
-
-                # 삭제 체크박스
-                is_checked = st.checkbox(
-                    "🗑️ 삭제",
-                    value=(profile['id'] in st.session_state.profiles_to_delete),
-                    key=f"delete_{profile['id']}"
-                )
-
-                # 체크 상태 업데이트
-                if is_checked:
-                    st.session_state.profiles_to_delete.add(profile['id'])
-                else:
-                    st.session_state.profiles_to_delete.discard(profile['id'])
 
     st.divider()
 
@@ -361,29 +418,28 @@ def render_profile_management_ui():
 
     st.divider()
 
-    # 7. 확정 버튼
-    col1, col2, col3 = st.columns([2, 1, 2])
+    # 7. 삭제 버튼
+    col1, col2, col3 = st.columns([3, 2, 3])
 
     with col2:
-        if st.button("✅ 확정 및 저장", type="primary", use_container_width=True):
-            if len(st.session_state.profiles_to_delete) == 0:
-                st.info("변경사항이 없습니다.")
+        if st.button("🗑️ 선택 삭제", type="primary", use_container_width=True, disabled=(len(st.session_state.profiles_to_delete) == 0)):
+            # 삭제 실행
+            with st.spinner("삭제 중..."):
+                result = delete_profiles(list(st.session_state.profiles_to_delete))
+
+            if result['success']:
+                st.success(f"✅ {result['deleted_count']}개 프로필이 삭제되었습니다!")
+
+                # 세션 상태 초기화
+                st.session_state.profiles_to_delete = set()
+                if 'prev_select_all' in st.session_state:
+                    st.session_state.prev_select_all = False
+
+                st.balloons()
+
+                # 2초 후 자동 새로고침
+                import time
+                time.sleep(2)
+                st.rerun()
             else:
-                # 삭제 실행
-                with st.spinner("삭제 중..."):
-                    result = delete_profiles(list(st.session_state.profiles_to_delete))
-
-                if result['success']:
-                    st.success(f"✅ {result['deleted_count']}개 프로필이 삭제되었습니다!")
-
-                    # 세션 상태 초기화
-                    st.session_state.profiles_to_delete = set()
-
-                    st.balloons()
-
-                    # 2초 후 자동 새로고침
-                    import time
-                    time.sleep(2)
-                    st.rerun()
-                else:
-                    st.error(f"삭제 실패: {result.get('message', '알 수 없는 오류')}")
+                st.error(f"삭제 실패: {result.get('message', '알 수 없는 오류')}")

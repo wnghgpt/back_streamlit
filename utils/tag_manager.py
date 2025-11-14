@@ -333,7 +333,7 @@ def render_tag_management_ui():
     st.divider()
 
     # 5. 페이지네이션 설정 (이미지 표시 전)
-    page_size = 12  # 3행 × 4열
+    page_size = 36  # 6행 × 6열
     total_pages = (len(all_profiles) + page_size - 1) // page_size
 
     # 현재 페이지 결정 및 인덱스 계산
@@ -350,7 +350,7 @@ def render_tag_management_ui():
         start_idx = (page - 1) * page_size
         end_idx = min(start_idx + page_size, len(all_profiles))
 
-    # 6. 이미지 그리드 (4열)
+    # 6. 이미지 그리드 (6열)
     st.markdown("### 🖼️ 프로필 선택")
 
     # 프로필 id->name 매핑 (저장 시 사용)
@@ -358,9 +358,9 @@ def render_tag_management_ui():
 
     checkbox_states = {}
 
-    # 4개씩 행으로 묶기
-    for row_start in range(start_idx, end_idx, 4):
-        cols = st.columns(4)
+    # 6개씩 행으로 묶기
+    for row_start in range(start_idx, end_idx, 6):
+        cols = st.columns(6)
 
         for i, col in enumerate(cols):
             idx = row_start + i

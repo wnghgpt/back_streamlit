@@ -6,17 +6,17 @@ import streamlit as st
 import sys
 from pathlib import Path
 
-# 프로젝트 루트를 경로에 추가
+# 프로젝트 루트를 경로에 추가 (가장 먼저)
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# back_analysis import
+# back_streamlit utils import (충돌 방지를 위해 먼저 import)
+from utils.profile_manager import render_profile_management_ui
+
+# back_analysis import (나중에 추가)
 sys.path.insert(0, "/home/wavus/새 폴더/back_analysis/src")
 from database.connection import DatabaseManager
 from database.crud import crud_service
-
-# utils import
-from utils.profile_manager import render_profile_management_ui
 
 # 페이지 설정
 st.set_page_config(

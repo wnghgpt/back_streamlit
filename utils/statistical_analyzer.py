@@ -24,6 +24,65 @@ from database.models import (
     ReferenceTag,
     ReferenceAnalysisData,
 )
+import json
+from pathlib import Path
+
+
+# ==================== 정의 파일 로딩 ====================
+
+def load_description_mapping():
+    """JSON 정의 파일에서 ratio_name → description 매핑 로드"""
+    mapping = {}
+
+    # Atomic measurements
+    atomic_dir = Path("/home/wavus/새 폴더/back_analysis/src/database/definitions/atomic_measurements")
+    if atomic_dir.exists():
+        for json_file in atomic_dir.glob("*.json"):
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if 'measurements' in data:
+                        for m in data['measurements']:
+                            mapping[m['measurement_name']] = m.get('description', m['measurement_name'])
+            except Exception:
+                pass
+
+    # Derived ratios
+    derived_dir = Path("/home/wavus/새 폴더/back_analysis/src/database/definitions/derived_ratios")
+    if derived_dir.exists():
+        for json_file in derived_dir.glob("*.json"):
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if 'ratios' in data:
+                        for r in data['ratios']:
+                            mapping[r['ratio_name']] = r.get('description', r['ratio_name'])
+            except Exception:
+                pass
+
+    return mapping
+
+
+# 전역 캐싱
+_description_cache = None
+
+def get_description(name: str) -> str:
+    """ratio_name에서 description 반환 (캐싱)"""
+    global _description_cache
+    if _description_cache is None:
+        _description_cache = load_description_mapping()
+    return _description_cache.get(name, name)
+
+
+def split_name_and_side(full_name: str) -> Tuple[str, str]:
+    """이름에서 side 접미사(-left/-right/-center)를 분리하여 (base, side) 반환"""
+    if not isinstance(full_name, str):
+        return full_name, None
+    for s in ("left", "right", "center"):
+        suffix = f"-{s}"
+        if full_name.endswith(suffix):
+            return full_name[: -len(suffix)], s
+    return full_name, None
 
 
 # ==================== 데이터 로딩 ====================
@@ -37,13 +96,16 @@ def get_available_atomic_measurements() -> List[Dict]:
         for s in snaps:
             atomic = (s.data_json or {}).get('atomic') or {}
             for name, meta in atomic.items():
-                # side는 키에 포함되어 있을 가능성이 높음. meta에도 있으면 사용.
-                side = meta.get('side')
-                display = f"{name}{f' ({side})' if side else ''}"
+                # name에서 side 추론 후, meta 정보와 병합
+                base_name, inferred_side = split_name_and_side(name)
+                side = meta.get('side') or inferred_side
+                # description은 base name 기준으로 조회
+                description = get_description(base_name)
+                display = f"{description}{f' ({side})' if side else ''}"
                 keys[name] = {
                     'display': display,
-                    'name': name,
-                    'type': meta.get('measurement_type'),  # 대부분 None일 수 있음
+                    'name': name,  # 실제 키는 스냅샷 키 유지
+                    'type': meta.get('measurement_type'),
                     'side': side,
                 }
         return sorted(keys.values(), key=lambda x: x['display'])
@@ -58,14 +120,18 @@ def get_available_derived_measurements() -> List[Dict]:
         for s in snaps:
             derived = (s.data_json or {}).get('derived') or {}
             for name, meta in derived.items():
-                side = meta.get('side')
+                # name에서 side 추론 후, meta 정보와 병합
+                base_name, inferred_side = split_name_and_side(name)
+                side = meta.get('side') or inferred_side
                 cat = meta.get('category')
+                # description은 base name 기준으로 조회
+                description = get_description(base_name)
                 side_str = f" ({side})" if side else ""
                 cat_str = f" [{cat}]" if cat else ""
-                display = f"{name}{side_str}{cat_str}"
+                display = f"{description}{side_str}{cat_str}"
                 keys[name] = {
                     'display': display,
-                    'name': name,
+                    'name': name,  # 실제 키는 스냅샷 키 유지
                     'category': cat,
                     'side': side,
                 }
