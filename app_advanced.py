@@ -34,7 +34,7 @@ from utils.statistical_analyzer import (
 
 # Database (back_analysis - utils import 이후에 경로 추가)
 import sys
-sys.path.insert(0, "/home/wavus/새 폴더/back_analysis/src")
+sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
 
 from database.crud import crud_service
 

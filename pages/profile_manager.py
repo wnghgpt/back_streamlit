@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root))
 from utils.profile_manager import render_profile_management_ui
 
 # back_analysis import (나중에 추가)
-sys.path.insert(0, "/home/wavus/새 폴더/back_analysis/src")
+sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
 from database.connection import DatabaseManager
 from database.crud import crud_service
 

@@ -11,7 +11,7 @@ from datetime import datetime
 import sys
 
 # back_analysis import
-sys.path.insert(0, "/home/wavus/새 폴더/back_analysis/src")
+sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
 from database.connection import DatabaseManager
 from database.models import ReferenceProfile, ReferenceTag, TagDefinition
 from database.crud import crud_service
@@ -126,7 +126,7 @@ def load_tag_annotation(tag_name):
     """태그 annotation JSON 파일 로드"""
     fs_level = get_fs_level(tag_name)
     filename = safe_tag_filename(tag_name) + ".json"
-    base_dir = Path("/home/wavus/새 폴더/back_analysis/src/database/definitions/tags")
+    base_dir = Path("/home/wavus/face_app/back_analysis/src/database/definitions/tags")
     json_path = base_dir / f"level_{fs_level}" / filename
 
     if json_path.exists():
@@ -152,7 +152,7 @@ def save_tag_annotation(tag_name, selected_profiles):
     """태그 annotation JSON 파일 저장"""
     fs_level = get_fs_level(tag_name)
     db_level = get_db_level(tag_name)
-    json_dir = Path("/home/wavus/새 폴더/back_analysis/src/database/definitions/tags") / f"level_{fs_level}"
+    json_dir = Path("/home/wavus/face_app/back_analysis/src/database/definitions/tags") / f"level_{fs_level}"
     json_path = json_dir / f"{safe_tag_filename(tag_name)}.json"
 
     # 디렉토리 생성
@@ -381,7 +381,7 @@ def render_tag_management_ui():
 
                     # 상대 경로면 절대 경로로 변환
                     if not os.path.isabs(image_path):
-                        image_path = f"/home/wavus/새 폴더/back_analysis/{image_path}"
+                        image_path = f"/home/wavus/face_app/back_analysis/{image_path}"
 
                 if image_path and os.path.exists(image_path):
                     try:

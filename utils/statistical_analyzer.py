@@ -3,7 +3,7 @@
 독립변수(atomic, derived, tag) vs 종속변수(tag) 분석
 """
 import sys
-sys.path.insert(0, "/home/wavus/새 폴더/back_analysis/src")
+sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
 
 import pandas as pd
 import numpy as np
@@ -35,7 +35,7 @@ def load_description_mapping():
     mapping = {}
 
     # Atomic measurements
-    atomic_dir = Path("/home/wavus/새 폴더/back_analysis/src/database/definitions/atomic_measurements")
+    atomic_dir = Path("/home/wavus/face_app/back_analysis/src/database/definitions/atomic_measurements")
     if atomic_dir.exists():
         for json_file in atomic_dir.glob("*.json"):
             try:
@@ -48,7 +48,7 @@ def load_description_mapping():
                 pass
 
     # Derived ratios
-    derived_dir = Path("/home/wavus/새 폴더/back_analysis/src/database/definitions/derived_ratios")
+    derived_dir = Path("/home/wavus/face_app/back_analysis/src/database/definitions/derived_ratios")
     if derived_dir.exists():
         for json_file in derived_dir.glob("*.json"):
             try:

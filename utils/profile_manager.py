@@ -13,7 +13,7 @@ import sys
 from utils.korean_name_parser import parse_korean_name, romanize_korean_name
 
 # back_analysis import
-sys.path.insert(0, "/home/wavus/새 폴더/back_analysis/src")
+sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
 from database.connection import DatabaseManager
 from database.models import ReferenceProfile, ReferenceAnalysisData
 
@@ -156,7 +156,7 @@ def get_image_path(image_file_path):
 
     # 상대 경로면 절대 경로로 변환
     if not os.path.isabs(image_file_path):
-        image_file_path = f"/home/wavus/새 폴더/back_analysis/{image_file_path}"
+        image_file_path = f"/home/wavus/face_app/back_analysis/{image_file_path}"
 
     return image_file_path
 
