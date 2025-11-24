@@ -34,7 +34,13 @@ from utils.statistical_analyzer import (
 
 # Database (back_analysis - utils import 이후에 경로 추가)
 import sys
-sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
+from pathlib import Path
+
+# back_analysis 경로를 동적으로 추가 (repo 루트 기준)
+ROOT_DIR = Path(__file__).resolve().parent
+BACK_ANALYSIS_SRC = ROOT_DIR.parent / "back_analysis" / "src"
+if BACK_ANALYSIS_SRC.exists():
+    sys.path.insert(0, str(BACK_ANALYSIS_SRC))
 
 from database.crud import crud_service
 

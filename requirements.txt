@@ -14,3 +14,6 @@ scipy>=1.10.0
 # Database (using back_analysis database module)
 sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
+
+# ML/통계
+scikit-learn>=1.3.0

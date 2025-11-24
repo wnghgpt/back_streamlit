@@ -8,12 +8,16 @@ from pathlib import Path
 from PIL import Image
 from datetime import datetime
 import sys
+from pathlib import Path
 
 # 한글 이름 파서 (back_streamlit/utils 내부)
 from utils.korean_name_parser import parse_korean_name, romanize_korean_name
 
-# back_analysis import
-sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
+# back_analysis import (동적 경로)
+ROOT_DIR = Path(__file__).resolve().parent.parent
+BACK_ANALYSIS_SRC = ROOT_DIR.parent / "back_analysis" / "src"
+if BACK_ANALYSIS_SRC.exists():
+    sys.path.insert(0, str(BACK_ANALYSIS_SRC))
 from database.connection import DatabaseManager
 from database.models import ReferenceProfile, ReferenceAnalysisData
 
@@ -70,7 +74,7 @@ def get_profile_by_id(profile_id):
             landmarks_count = sum(1 for v in snap.data_json['landmarks'] if v is not None)
         else:
             landmarks_count = 0
-        ratios_count = len(profile.basic_ratio) if profile.basic_ratio else 0
+        ratios_count = 0
 
         return {
             'id': profile.id,
@@ -156,9 +160,10 @@ def get_image_path(image_file_path):
 
     # 상대 경로면 절대 경로로 변환
     if not os.path.isabs(image_file_path):
-        image_file_path = f"/home/wavus/face_app/back_analysis/{image_file_path}"
+        base_dir = Path(__file__).resolve().parent.parent.parent / "back_analysis"
+        image_file_path = base_dir / image_file_path
 
-    return image_file_path
+    return str(image_file_path)
 
 
 @st.dialog("프로필 상세 정보", width="large")

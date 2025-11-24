@@ -3,7 +3,13 @@
 독립변수(atomic, derived, tag) vs 종속변수(tag) 분석
 """
 import sys
-sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
+from pathlib import Path
+
+# back_analysis 경로 동적 추가
+ROOT_DIR = Path(__file__).resolve().parent.parent
+BACK_ANALYSIS_SRC = ROOT_DIR.parent / "back_analysis" / "src"
+if BACK_ANALYSIS_SRC.exists():
+    sys.path.insert(0, str(BACK_ANALYSIS_SRC))
 
 import pandas as pd
 import numpy as np
@@ -34,8 +40,8 @@ def load_description_mapping():
     """JSON 정의 파일에서 ratio_name → description 매핑 로드"""
     mapping = {}
 
-    # Atomic measurements
-    atomic_dir = Path("/home/wavus/face_app/back_analysis/src/database/definitions/atomic_measurements")
+    base_defs = BACK_ANALYSIS_SRC / "database" / "definitions"
+    atomic_dir = base_defs / "atomic_measurements"
     if atomic_dir.exists():
         for json_file in atomic_dir.glob("*.json"):
             try:
@@ -48,7 +54,7 @@ def load_description_mapping():
                 pass
 
     # Derived ratios
-    derived_dir = Path("/home/wavus/face_app/back_analysis/src/database/definitions/derived_ratios")
+    derived_dir = base_defs / "derived_ratios"
     if derived_dir.exists():
         for json_file in derived_dir.glob("*.json"):
             try:
@@ -88,14 +94,16 @@ def split_name_and_side(full_name: str) -> Tuple[str, str]:
 # ==================== 데이터 로딩 ====================
 
 def get_available_atomic_measurements() -> List[Dict]:
-    """스냅샷(JSONB) 기반 사용 가능한 atomic 목록 반환"""
+    """스냅샷(JSONB) 기반 사용 가능한 atomic(길이/거리/곡률 등) 목록 반환"""
     db_manager = DatabaseManager()
     with db_manager.get_session() as session:
         snaps = session.query(ReferenceAnalysisData).filter(ReferenceAnalysisData.is_latest.is_(True)).all()
         keys = {}
         for s in snaps:
-            atomic = (s.data_json or {}).get('atomic') or {}
-            for name, meta in atomic.items():
+            measurements = (s.data_json or {}).get('measurements') or {}
+            for name, meta in measurements.items():
+                if (meta.get('type') or '').lower() == 'ratio':
+                    continue
                 # name에서 side 추론 후, meta 정보와 병합
                 base_name, inferred_side = split_name_and_side(name)
                 side = meta.get('side') or inferred_side
@@ -105,21 +113,23 @@ def get_available_atomic_measurements() -> List[Dict]:
                 keys[name] = {
                     'display': display,
                     'name': name,  # 실제 키는 스냅샷 키 유지
-                    'type': meta.get('measurement_type'),
+                    'type': meta.get('type') or meta.get('measurement_type'),
                     'side': side,
                 }
         return sorted(keys.values(), key=lambda x: x['display'])
 
 
 def get_available_derived_measurements() -> List[Dict]:
-    """스냅샷(JSONB) 기반 사용 가능한 derived 목록 반환"""
+    """스냅샷(JSONB) 기반 사용 가능한 ratio 목록 반환"""
     db_manager = DatabaseManager()
     with db_manager.get_session() as session:
         snaps = session.query(ReferenceAnalysisData).filter(ReferenceAnalysisData.is_latest.is_(True)).all()
         keys = {}
         for s in snaps:
-            derived = (s.data_json or {}).get('derived') or {}
-            for name, meta in derived.items():
+            measurements = (s.data_json or {}).get('measurements') or {}
+            for name, meta in measurements.items():
+                if (meta.get('type') or '').lower() != 'ratio':
+                    continue
                 # name에서 side 추론 후, meta 정보와 병합
                 base_name, inferred_side = split_name_and_side(name)
                 side = meta.get('side') or inferred_side
@@ -195,8 +205,8 @@ def prepare_statistical_dataset(independent_vars: List[Dict], target_tag: str) -
                 values = {}
                 for pid in profile_ids:
                     data = snap_map.get(pid) or {}
-                    atomic = data.get('atomic') or {}
-                    meta = atomic.get(key)
+                    measurements = data.get('measurements') or {}
+                    meta = measurements.get(key)
                     if meta and meta.get('value') is not None:
                         try:
                             values[pid] = float(meta['value'])
@@ -217,8 +227,8 @@ def prepare_statistical_dataset(independent_vars: List[Dict], target_tag: str) -
                 values = {}
                 for pid in profile_ids:
                     data = snap_map.get(pid) or {}
-                    derived = data.get('derived') or {}
-                    meta = derived.get(key)
+                    measurements = data.get('measurements') or {}
+                    meta = measurements.get(key)
                     if meta and meta.get('value') is not None:
                         try:
                             values[pid] = float(meta['value'])

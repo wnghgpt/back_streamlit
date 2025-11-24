@@ -13,8 +13,10 @@ sys.path.insert(0, str(project_root))
 # back_streamlit utils import (충돌 방지를 위해 먼저 import)
 from utils.tag_manager import render_tag_management_ui
 
-# back_analysis import (나중에 추가)
-sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
+# back_analysis import (동적 경로 추가)
+BACK_ANALYSIS_SRC = project_root.parent / "back_analysis" / "src"
+if BACK_ANALYSIS_SRC.exists():
+    sys.path.insert(0, str(BACK_ANALYSIS_SRC))
 from database.connection import DatabaseManager
 from database.crud import crud_service
 

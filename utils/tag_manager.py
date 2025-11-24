@@ -9,9 +9,13 @@ from pathlib import Path
 from PIL import Image
 from datetime import datetime
 import sys
+from pathlib import Path
 
-# back_analysis import
-sys.path.insert(0, "/home/wavus/face_app/back_analysis/src")
+# back_analysis 경로 동적 추가
+ROOT_DIR = Path(__file__).resolve().parent.parent
+BACK_ANALYSIS_SRC = ROOT_DIR.parent / "back_analysis" / "src"
+if BACK_ANALYSIS_SRC.exists():
+    sys.path.insert(0, str(BACK_ANALYSIS_SRC))
 from database.connection import DatabaseManager
 from database.models import ReferenceProfile, ReferenceTag, TagDefinition
 from database.crud import crud_service
@@ -126,7 +130,7 @@ def load_tag_annotation(tag_name):
     """태그 annotation JSON 파일 로드"""
     fs_level = get_fs_level(tag_name)
     filename = safe_tag_filename(tag_name) + ".json"
-    base_dir = Path("/home/wavus/face_app/back_analysis/src/database/definitions/tags")
+    base_dir = BACK_ANALYSIS_SRC / "database" / "definitions" / "tags"
     json_path = base_dir / f"level_{fs_level}" / filename
 
     if json_path.exists():
@@ -152,7 +156,7 @@ def save_tag_annotation(tag_name, selected_profiles):
     """태그 annotation JSON 파일 저장"""
     fs_level = get_fs_level(tag_name)
     db_level = get_db_level(tag_name)
-    json_dir = Path("/home/wavus/face_app/back_analysis/src/database/definitions/tags") / f"level_{fs_level}"
+    json_dir = BACK_ANALYSIS_SRC / "database" / "definitions" / "tags" / f"level_{fs_level}"
     json_path = json_dir / f"{safe_tag_filename(tag_name)}.json"
 
     # 디렉토리 생성
@@ -373,15 +377,14 @@ def render_tag_management_ui():
                 # 이미지 표시
                 image_path = profile['image_file_path']
 
-                # back_analysis/uploads/ 경로 처리
+                # back_analysis/uploads/ 경로 처리 (repo 루트 기준)
                 if image_path:
-                    # /uploads/... 형태면 앞의 / 제거
                     if image_path.startswith('/uploads/'):
                         image_path = image_path[1:]  # /uploads/ -> uploads/
-
-                    # 상대 경로면 절대 경로로 변환
                     if not os.path.isabs(image_path):
-                        image_path = f"/home/wavus/face_app/back_analysis/{image_path}"
+                        base_dir = Path(__file__).resolve().parent.parent.parent / "back_analysis"
+                        image_path = base_dir / image_path
+                    image_path = str(image_path)
 
                 if image_path and os.path.exists(image_path):
                     try:
