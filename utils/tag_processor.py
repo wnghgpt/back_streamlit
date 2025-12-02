@@ -7,91 +7,106 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 import json
+from pathlib import Path
 from .landmark_calculator import calculate_length, calculate_curvature
 
 
+_TAG_CACHE = None
+
+
+def _load_tag_classification():
+    """tag_classification.json을 읽어 레벨별 태그 set을 반환"""
+    global _TAG_CACHE
+    if _TAG_CACHE is not None:
+        return _TAG_CACHE
+
+    try:
+        # back_streamlit/utils/ -> ../back_analysis/src/database/source_data/tags/tag_classification.json
+        json_path = (
+            Path(__file__)
+            .resolve()
+            .parent
+            .parent
+            .parent
+            / "back_analysis"
+            / "src"
+            / "database"
+            / "source_data"
+            / "tags"
+            / "tag_classification.json"
+        )
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        levels = data.get("tag_levels", {})
+        _TAG_CACHE = {int(k): set(v.get("tags", [])) for k, v in levels.items()}
+    except Exception:
+        _TAG_CACHE = {}
+
+    return _TAG_CACHE
+
+
 def get_tag_groups():
-    """태그 그룹 정보를 반환합니다."""
-    return {
-        "추상 - 분위기": ['세련된', '친근한'],
-        "추상 - 품격": ['고급스러운', '생기있는'],
-        "추상 - 시대감": ['현대적인','고전적인'],
-        "추상 - 신뢰감": ['선한','날티나는'],
-        "1차 - 동물상": ['강 아지','고양이','다람쥐','참새','사슴','토끼','꼬부기','사막여우','호랑이'],
-        "1차 - 지역감": ['서구적인','동양적인'],
-        "1차 - 성별감": ['남성적','중성적','여성스런'],
-        "1차 - 매력": ['귀여운', '청순한', '섹시한'],
-        "1차 - 연령감": ['동안의', '성숙한'],
-        "1차 - 화려함": ['화려한','수수한'],
-        "1차 - 온도감": ['차가운','따뜻한'],
-        "1차 - 성격": ['지적인','발랄한'],
-        "1차 - 인상": ['날카로운','부드러운'],
-        "1차 - 얼굴형": ['진한','두부상'],
-        "2차 - 이마": ['forehead-높이-긴', 'forehead-높이-보통', 'forehead-높이-짧은', 'forehead-너비-넓은', 'forehead-너비-보통', 'forehead-너비-좁은'],
-        "2차 - 눈썹": ['eyebrow-눈과의거리-먼', 'eyebrow-눈과의거리-보통', 'eyebrow-눈과의거리-가까운', 'eyebrow-형태-공격', 'eyebrow-형태-아치', 'eyebrow-형태-물결', 'eyebrow-형태-일자', 'eyebrow-형태-둥근', 'eyebrow-형태-처진', 'eyebrow-곡률-큰', 'eyebrow-곡률-보통', 'eyebrow-곡률-작은', 'eyebrow-거리-먼', 'eyebrow-거리-보통', 'eyebrow-거리-가까운', 'eyebrow-길이-긴', 'eyebrow-길이-보통', 'eyebrow-길이-짧은', 'eyebrow-두께-두꺼운', 'eyebrow-두께-보통', 'eyebrow-두께-얇은', 'eyebrow-숱-진한', 'eyebrow-숱-보통', 'eyebrow-숱-흐린'],
-        "2차 - 눈": ['eye-인상-사나운', 'eye-인상-똘망똘망한', 'eye-인상-보통', 'eye-인상-순한', 'eye-인상-졸린', 'eye-미간-먼', 'eye-미간-보통', 'eye-미간-좁은', 'eye-모양-시원한', 'eye-모양-찢어진', 'eye-모양-보통', 'eye-모양-동그란', 'eye-모양-답답한', 'eye-길이-긴', 'eye-길이-보통', 'eye-길이-짧은', 'eye-높이-높은', 'eye-높이-보통', 'eye-높이-낮은', 'eye-쌍꺼풀-없음', 'eye-쌍꺼풀-아웃', 'eye-쌍꺼풀-세미아웃', 'eye-쌍꺼풀-인아웃', 'eye-쌍꺼풀-인', 'eye-애교-많은', 'eye-애교-보통', 'eye-애교-적은', 'eye-눈밑지-심한', 'eye-눈밑지-약간', 'eye-눈밑지-없음', 'eye-동공가려짐-많이', 'eye-동공가려짐-약간', 'eye-동공가려짐-보통', 'eye-동공가려짐-과노출'],
-        "2차 - 코": ['nose-모양-화살코', 'nose-모양-보통', 'nose-모양-복코', 'nose-모양-들창코', 'nose-길이-긴', 'nose-길이-보통', 'nose-길이-짧은', 'nose-콧대-두꺼운', 'nose-콧대-보통', 'nose-콧대-얇은', 'nose-콧볼-넓은', 'nose-콧볼-보통', 'nose-콧볼-좁은', 'nose-코끝-넓은', 'nose-코끝-보통', 'nose-코끝-좁은', 'nose-콧구멍-큰', 'nose-콧구멍-긴', 'nose-콧구멍-보통', 'nose-콧구멍-작은'],
-        "2차 - 입": ['mouth-너비-넓은', 'mouth-너비-보통', 'mouth-너비-좁은', 'mouth-중심-위', 'mouth-중심-수평', 'mouth-중심-아래', 'mouth-입꼬리-올라간', 'mouth-입꼬리-평평한', 'mouth-입꼬리-내려간', 'mouth-위두께-두꺼운', 'mouth-위두께-도톰', 'mouth-위두께-보통', 'mouth-위두께-얇은', 'mouth-아래두께-두꺼운', 'mouth-아래두께-도톰', 'mouth-아래두께-보통', 'mouth-아래두께-얇은', 'mouth-전체입술선-또렷', 'mouth-전체입술선-보통', 'mouth-전체입술선-흐릿', 'mouth-큐피드-또렷', 'mouth-큐피드-둥글', 'mouth-큐피드-1자', 'mouth-입술결절-뾰족', 'mouth-입술결절-1자', 'mouth-입술결절-함몰', 'mouth-인중길이-짧아', 'mouth-인중길이-보통', 'mouth-인중길이-길어', 'mouth-인중너비-넓은', 'mouth-인중너비-보통', 'mouth-인중너비-좁은', 'mouth-팔자-깊은', 'mouth-팔자-보통', 'mouth-팔자-없음'],
-        "2차 - 윤곽": ['silhouette-얼굴형-달걀형', 'silhouette-얼굴형-역삼각형', 'silhouette-얼굴형-긴', 'silhouette-얼굴형-동글', 'silhouette-얼굴형-사각형', 'silhouette-옆광대높이-높은', 'silhouette-옆광대높이-보통', 'silhouette-옆광대높이-낮은', 'silhouette-옆광대위치-밖', 'silhouette-옆광대위치-보통', 'silhouette-옆광대위치-안', 'silhouette-앞광대크기-큰', 'silhouette-앞광대크기-보통', 'silhouette-앞광대크기-작은', 'silhouette-앞광대높이-높은', 'silhouette-앞광대높이-보통', 'silhouette-앞광대높이-낮은', 'silhouette-턱길이-긴', 'silhouette-턱길이-보통', 'silhouette-턱길이-짧은', 'silhouette-볼살-많음', 'silhouette-볼살-보통', 'silhouette-볼살-없음'],
-    }
+    """레벨별 태그 목록을 반환합니다. 키는 레벨 번호(1/2/3)입니다."""
+    level_sets = _load_tag_classification()
+    return {level: sorted(list(tags)) for level, tags in level_sets.items()}
 
 
 def analyze_tag_relationships(landmarks_data):
     """태그 간 관계 분석"""
-    tag_groups = get_tag_groups()
+    tag_groups = get_tag_groups()  # {level: [tags]}
 
-    # 태그 레벨별 분류
-    abstract_tags = set()
-    primary_tags = set()
-    secondary_tags = set()
-
-    for group_name, tags in tag_groups.items():
-        if group_name.startswith("추상"):
-            abstract_tags.update(tags)
-        elif group_name.startswith("1차"):
-            primary_tags.update(tags)
-        elif group_name.startswith("2차"):
-            secondary_tags.update(tags)
+    # 태그 레벨별 분류 (레벨 1/2/3 그대로 사용)
+    level1_tags = set(tag_groups.get(1, []))
+    level2_tags = set(tag_groups.get(2, []))
+    level3_tags = set(tag_groups.get(3, []))
 
     # 관계 분석
-    abstract_to_primary = {}
-    primary_to_secondary = {}
-    abstract_to_secondary = {}
+    level3_to_level2 = {}  # 3→2
+    level2_to_level1 = {}  # 2→1
+    level3_to_level1 = {}  # 3→1
 
     for _, row in landmarks_data.iterrows():
         if 'tags' in row and row['tags']:
             row_tags = row['tags'] if isinstance(row['tags'], list) else []
 
             # 해당 행의 태그들을 레벨별로 분류
-            row_abstract = [tag for tag in row_tags if tag in abstract_tags]
-            row_primary = [tag for tag in row_tags if tag in primary_tags]
-            row_secondary = [tag for tag in row_tags if tag in secondary_tags]
+            row_level1 = [tag for tag in row_tags if tag in level1_tags]
+            row_level2 = [tag for tag in row_tags if tag in level2_tags]
+            row_level3 = [tag for tag in row_tags if tag in level3_tags]
 
-            # 추상 → 1차 관계
-            for abs_tag in row_abstract:
-                for prim_tag in row_primary:
-                    key = (abs_tag, prim_tag)
-                    abstract_to_primary[key] = abstract_to_primary.get(key, 0) + 1
+            # 3 → 2 관계
+            for l3 in row_level3:
+                for l2 in row_level2:
+                    key = (l3, l2)
+                    level3_to_level2[key] = level3_to_level2.get(key, 0) + 1
 
-            # 1차 → 2차 관계
-            for prim_tag in row_primary:
-                for sec_tag in row_secondary:
-                    key = (prim_tag, sec_tag)
-                    primary_to_secondary[key] = primary_to_secondary.get(key, 0) + 1
+            # 2 → 1 관계
+            for l2 in row_level2:
+                for l1 in row_level1:
+                    key = (l2, l1)
+                    level2_to_level1[key] = level2_to_level1.get(key, 0) + 1
 
-            # 추상 → 2차 관계 (직접 연결)
-            for abs_tag in row_abstract:
-                for sec_tag in row_secondary:
-                    key = (abs_tag, sec_tag)
-                    abstract_to_secondary[key] = abstract_to_secondary.get(key, 0) + 1
+            # 3 → 1 관계 (직접 연결)
+            for l3 in row_level3:
+                for l1 in row_level1:
+                    key = (l3, l1)
+                    level3_to_level1[key] = level3_to_level1.get(key, 0) + 1
 
     return {
-        'abstract_to_primary': abstract_to_primary,
-        'primary_to_secondary': primary_to_secondary,
-        'abstract_to_secondary': abstract_to_secondary,
-        'abstract_tags': list(abstract_tags),
-        'primary_tags': list(primary_tags),
-        'secondary_tags': list(secondary_tags)
+        # 유지보수를 위해 기존 키 이름도 함께 제공
+        'abstract_to_primary': level3_to_level2,
+        'primary_to_secondary': level2_to_level1,
+        'abstract_to_secondary': level3_to_level1,
+        'abstract_tags': list(level3_tags),
+        'primary_tags': list(level2_tags),
+        'secondary_tags': list(level1_tags),
+        # 새 키 (레벨 번호 기준)
+        'level3_to_level2': level3_to_level2,
+        'level2_to_level1': level2_to_level1,
+        'level3_to_level1': level3_to_level1,
+        'level1_tags': list(level1_tags),
+        'level2_tags': list(level2_tags),
+        'level3_tags': list(level3_tags)
     }
 
 
@@ -112,147 +127,6 @@ def sort_by_frequency(tags, relationships, is_source=True):
     # 빈도순으로 정렬 (높은 순)
     sorted_tags = sorted(tags, key=lambda x: tag_frequency.get(x, 0), reverse=True)
     return sorted_tags
-
-
-def execute_single_tag_analysis(landmarks_data, selected_tag, point1, point2, calc_type):
-    """단일 태그 분석 실행"""
-    st.write("### 🔄 분석 실행 중...")
-
-    # 선택된 태그를 가진 데이터 필터링
-    tag_data = []
-    all_data = []
-    names_with_tag = []
-    names_all = []
-
-    for _, row in landmarks_data.iterrows():
-        try:
-            # 랜드마크 데이터 파싱
-            if isinstance(row['landmarks'], str):
-                landmarks = json.loads(row['landmarks'])
-            else:
-                landmarks = row['landmarks']
-
-            # 측정값 계산
-            measurement = calculate_length(landmarks, point1, point2, calc_type)
-
-            if measurement is not None:
-                all_data.append(measurement)
-                names_all.append(row['name'])
-
-                # 선택된 태그를 가진 데이터인지 확인
-                if 'tags' in row and row['tags']:
-                    row_tags = row['tags'] if isinstance(row['tags'], list) else []
-                    if selected_tag in row_tags:
-                        tag_data.append(measurement)
-                        names_with_tag.append(row['name'])
-
-        except Exception as e:
-            continue
-
-    if not tag_data:
-        st.error(f"'{selected_tag}' 태그를 가진 데이터가 없습니다.")
-        return
-
-    # 통계 계산
-    tag_mean = np.mean(tag_data)
-    tag_std = np.std(tag_data)
-    tag_q1, tag_q3 = np.percentile(tag_data, [25, 75])
-
-    all_mean = np.mean(all_data)
-    all_std = np.std(all_data)
-
-    # 경계값 제안 (Q1 기준)
-    boundary_suggestion = tag_q1
-
-    # 결과 표시
-    st.write("### 📊 분석 결과")
-
-    # 상단 메트릭
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("분석 태그", selected_tag)
-    with col2:
-        st.metric("태그 데이터", f"{len(tag_data)}개")
-    with col3:
-        st.metric("전체 데이터", f"{len(all_data)}개")
-    with col4:
-        st.metric("제안 경계값", f"{boundary_suggestion:.2f}")
-
-    # 박스플롯 생성
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        # 데이터 준비
-        plot_data = []
-        for val in tag_data:
-            plot_data.append({'value': val, 'group': f'{selected_tag} ({len(tag_data)}개)'})
-        for val in all_data:
-            plot_data.append({'value': val, 'group': f'전체 데이터 ({len(all_data)}개)'})
-
-        plot_df = pd.DataFrame(plot_data)
-
-        fig = px.box(
-            plot_df,
-            x='group',
-            y='value',
-            title=f'{selected_tag} vs 전체 데이터 분포',
-            labels={'value': f'측정값 ({calc_type})', 'group': '그룹'}
-        )
-
-        # 경계선 추가
-        fig.add_hline(y=boundary_suggestion, line_dash="dash", line_color="red",
-                     annotation_text=f"제안 경계값: {boundary_suggestion:.2f}")
-
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        st.write("#### 📈 태그 그룹 통계")
-        st.write(f"**평균:** {tag_mean:.3f}")
-        st.write(f"**표준편차:** {tag_std:.2f}")
-        st.write(f"**Q1:** {tag_q1:.2f}")
-        st.write(f"**Q3:** {tag_q3:.2f}")
-
-        st.write("#### 📈 전체 데이터 통계")
-        st.write(f"**평균:** {all_mean:.3f}")
-        st.write(f"**표준편차:** {all_std:.2f}")
-
-        # 차이 분석
-        mean_diff = tag_mean - all_mean
-        st.write("#### 🔍 차이 분석")
-        st.write(f"**평균 차이:** {mean_diff:+.2f}")
-
-        if abs(mean_diff) > all_std:
-            st.success("✅ 의미있는 차이 (1σ 이상)")
-        else:
-            st.warning("⚠️ 작은 차이 (1σ 미만)")
-
-    # 경계값 제안
-    st.write("### 🎯 경계값 제안")
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.write("**보수적 기준 (Q1)**")
-        st.write(f"{tag_q1:.2f} 이상")
-        st.write(f"정확도: ~75%")
-
-    with col2:
-        st.write("**중간 기준 (평균)**")
-        st.write(f"{tag_mean:.2f} 이상")
-        st.write(f"정확도: ~50%")
-
-    with col3:
-        st.write("**관대한 기준 (Q3)**")
-        st.write(f"{tag_q3:.2f} 이상")
-        st.write(f"정확도: ~25%")
-
-    # 상세 데이터
-    with st.expander("📋 상세 데이터 보기"):
-        detail_df = pd.DataFrame({
-            '파일명': names_with_tag,
-            '측정값': tag_data
-        })
-        detail_df = detail_df.sort_values('측정값', ascending=False)
-        st.dataframe(detail_df, use_container_width=True)
 
 
 def execute_level_comparison_analysis_ratio(landmarks_data, selected_feature, point1, point2, calc_type1, point3, point4, calc_type2):

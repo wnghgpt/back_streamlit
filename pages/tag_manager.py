@@ -71,7 +71,7 @@ with st.sidebar:
     st.divider()
 
     st.markdown("### 📁 저장 위치")
-    st.code("back_analysis/src/database/\ndefinitions/tags/level_X/\n{태그명}.json")
+    st.code("back_analysis/src/database/\nsource_data/tags/level_X/\n{태그명}.json")
 
 # 메인 UI 렌더링
 try:

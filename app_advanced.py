@@ -5,12 +5,8 @@ Face Coordinate Analyzer
 
 import streamlit as st
 import pandas as pd
- 
+from utils.tag_processor import analyze_tag_relationships
 
-# Utils modules (back_streamlit - 먼저 import해야 함!)
-from utils.tag_processor import (
-    analyze_tag_relationships,
-)
 from utils.visualization import create_sankey_diagram
 from utils.statistical_analyzer import (
     get_available_atomic_measurements,
@@ -31,16 +27,6 @@ from utils.statistical_analyzer import (
     analyze_4plus_tsne,
     visualize_4plus
 )
-
-# Database (back_analysis - utils import 이후에 경로 추가)
-import sys
-from pathlib import Path
-
-# back_analysis 경로를 동적으로 추가 (repo 루트 기준)
-ROOT_DIR = Path(__file__).resolve().parent
-BACK_ANALYSIS_SRC = ROOT_DIR.parent / "back_analysis" / "src"
-if BACK_ANALYSIS_SRC.exists():
-    sys.path.insert(0, str(BACK_ANALYSIS_SRC))
 
 from database.crud import crud_service
 

@@ -25,52 +25,28 @@ from .tag_processor import get_tag_groups
 import re
 
 
-def _classify_tag_group(tag_name: str) -> str:
-    """태그가 속한 상위 그룹 식별자 반환: 'abstract' | 'primary' | 'secondary' | 'unknown'"""
-    tag_groups = get_tag_groups()
-    for group_name, tags in tag_groups.items():
+def _load_level_lookup():
+    """tag_classification.json 기반 레벨별 태그 집합을 로드"""
+    return {level: set(tags) for level, tags in get_tag_groups().items()}
+
+
+def _get_level_for_tag(tag_name: str) -> int:
+    """태그가 속한 숫자 레벨(1/2/3) 반환. 없으면 기본 2."""
+    levels = _load_level_lookup()
+    for level, tags in levels.items():
         if tag_name in tags:
-            if group_name.startswith("추상"):
-                return 'abstract'
-            if group_name.startswith("1차"):
-                return 'primary'
-            if group_name.startswith("2차"):
-                return 'secondary'
-    return 'unknown'
+            return int(level)
+    return 2
 
 
 def get_fs_level(tag_name: str) -> int:
-    """파일시스템 폴더 레벨 매핑 (사용자 정의)
-    - level_1: 측정 기반 태그(기존 2차)
-    - level_2: 1차 태그(동물상/매력 등)
-    - level_3: 추상 태그
-    """
-    g = _classify_tag_group(tag_name)
-    if g == 'secondary':
-        return 1
-    if g == 'primary':
-        return 2
-    if g == 'abstract':
-        return 3
-    # 기본값: 1차로 간주
-    return 2
+    """파일/폴더 레벨은 태그 레벨과 동일하게 사용"""
+    return _get_level_for_tag(tag_name)
 
 
 def get_db_level(tag_name: str) -> int:
-    """DB 저장용 레벨 매핑 (ReferenceTag.tag_level)
-    - 1: 측정 기반(기존 2차)
-    - 2: 1차
-    - 3: 추상
-    """
-    g = _classify_tag_group(tag_name)
-    if g == 'abstract':
-        return 3
-    if g == 'secondary':
-        return 1
-    if g == 'primary':
-        return 2
-    # 기본값: 1차
-    return 2
+    """DB 저장용 레벨(ReferenceTag.tag_level)"""
+    return _get_level_for_tag(tag_name)
 
 
 def safe_tag_filename(tag: str) -> str:
@@ -86,10 +62,8 @@ def get_all_available_tags():
     """모든 사용 가능한 태그 목록 반환"""
     tag_groups = get_tag_groups()
     all_tags = []
-
-    for group_name, tags in tag_groups.items():
+    for tags in tag_groups.values():
         all_tags.extend(tags)
-
     return sorted(all_tags)
 
 
@@ -127,26 +101,23 @@ def get_all_profiles_with_images(sort_by="최신순"):
 
 
 def load_tag_annotation(tag_name):
-    """태그 annotation JSON 파일 로드"""
+    """태그 annotation JSON 파일 로드 (source_data/tags 기준)"""
     fs_level = get_fs_level(tag_name)
     filename = safe_tag_filename(tag_name) + ".json"
-    base_dir = BACK_ANALYSIS_SRC / "database" / "definitions" / "tags"
+    base_dir = BACK_ANALYSIS_SRC / "database" / "source_data" / "tags"
     json_path = base_dir / f"level_{fs_level}" / filename
 
     if json_path.exists():
         with open(json_path, 'r', encoding='utf-8') as f:
             tag_data = json.load(f)
 
-        # profiles를 id 세트로 변환
         profile_ids = set()
         if 'profiles' in tag_data:
             for profile in tag_data['profiles']:
                 if isinstance(profile, dict) and 'id' in profile:
                     profile_ids.add(profile['id'])
                 elif isinstance(profile, str):
-                    # 기존 형식 (이름만) 지원
                     pass
-
         return profile_ids
     else:
         return set()
@@ -156,7 +127,7 @@ def save_tag_annotation(tag_name, selected_profiles):
     """태그 annotation JSON 파일 저장"""
     fs_level = get_fs_level(tag_name)
     db_level = get_db_level(tag_name)
-    json_dir = BACK_ANALYSIS_SRC / "database" / "definitions" / "tags" / f"level_{fs_level}"
+    json_dir = BACK_ANALYSIS_SRC / "database" / "source_data" / "tags" / f"level_{fs_level}"
     json_path = json_dir / f"{safe_tag_filename(tag_name)}.json"
 
     # 디렉토리 생성
@@ -188,6 +159,13 @@ def sync_json_to_db(json_path):
     tag_name = tag_data['tag_name']
     # DB 저장용 레벨은 JSON의 값을 신뢰하지 않고 재계산
     tag_level = get_db_level(tag_name)
+    canonical_name = tag_name
+    tag_value = None
+    if tag_level == 1 and '-' in tag_name:
+        parts = tag_name.split('-')
+        if len(parts) >= 2:
+            canonical_name = '-'.join(parts[:-1])
+            tag_value = parts[-1]
     profiles = tag_data.get('profiles', [])
 
     # profiles에서 id 추출
@@ -210,7 +188,8 @@ def sync_json_to_db(json_path):
             # DB의 현재 태그 확인
             existing_tag = session.query(ReferenceTag).filter_by(
                 profile_id=profile.id,
-                tag_name=tag_name
+                tag_name=canonical_name,
+                tag_value=tag_value
             ).first()
 
             should_have_tag = profile.id in profile_id_set
@@ -219,9 +198,9 @@ def sync_json_to_db(json_path):
                 # 태그 추가
                 new_tag = ReferenceTag(
                     profile_id=profile.id,
-                    tag_name=tag_name,
+                    tag_name=canonical_name,
                     tag_level=tag_level,
-                    tag_value=None
+                    tag_value=tag_value
                 )
                 session.add(new_tag)
                 added_count += 1
@@ -274,48 +253,75 @@ def render_tag_management_ui():
     # 1. 헤더 부제목 제거 (요청 반영)
 
     # 2. 레벨 선택 및 태그 선택 및 정렬 옵션
-    col1, col2, col3, col4 = st.columns([1, 2, 1, 1])
+    tag_groups = get_tag_groups()
+    col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 0.8])
 
     with col1:
         selected_level = st.selectbox(
             "📊 레벨:",
-            [1, 2, 3],
+            sorted(tag_groups.keys()),
             format_func=lambda x: f"{x}차",
-            help="1차: 측정(eye-길이-긴 등), 2차: 1차 태그(강아지/귀여운 등), 3차: 추상"
+            help="tag_classification.json의 레벨(1/2/3)을 그대로 사용합니다."
         )
 
     # 레벨에 따라 태그 필터링
-    tag_groups = get_tag_groups()
     filtered_tags = []
 
     if selected_level == 1:
-        # 1차 = 측정 기반(기존 2차)
-        for group_name, tags in tag_groups.items():
-            if group_name.startswith("2차"):
-                filtered_tags.extend(tags)
-    elif selected_level == 2:
-        # 2차 = 1차 태그
-        for group_name, tags in tag_groups.items():
-            if group_name.startswith("1차"):
-                filtered_tags.extend(tags)
-    elif selected_level == 3:
-        # 3차 = 추상 태그
-        for group_name, tags in tag_groups.items():
-            if group_name.startswith("추상"):
-                filtered_tags.extend(tags)
+        # 태그명을 "부위-속성 / 값" 두 단계로 분리
+        level1_tags = tag_groups.get(1, [])
+        base_to_values = {}
+        for t in level1_tags:
+            parts = t.split('-')
+            if len(parts) >= 2:
+                base = '-'.join(parts[:-1])  # 부위-속성
+                value = parts[-1]            # 값
+            else:
+                base = t
+                value = None
+            base_to_values.setdefault(base, set())
+            if value:
+                base_to_values[base].add(value)
 
-    with col2:
-        if filtered_tags:
-            selected_tag = st.selectbox(
-                "📌 태그 선택:",
-                sorted(filtered_tags),
-                help="분석할 태그를 선택하세요"
-            )
-        else:
-            st.warning(f"{selected_level}차 태그가 없습니다.")
+        if not base_to_values:
+            st.warning("1차(레벨1) 태그가 없습니다.")
             return
 
-    with col3:
+        with col2:
+            selected_base = st.selectbox(
+                "📌 태그 유형",
+                sorted(base_to_values.keys()),
+                help="부위-속성을 먼저 선택하세요 (예: eye-길이)"
+            )
+        with col3:
+            values = sorted(base_to_values.get(selected_base, []))
+            if values:
+                selected_value = st.selectbox(
+                    "태그 값",
+                    values,
+                    help="세부 값을 선택하세요 (예: 긴)"
+                )
+                selected_tag = f"{selected_base}-{selected_value}"
+            else:
+                selected_tag = selected_base
+    else:
+        if selected_level == 2:
+            filtered_tags.extend(tag_groups.get(2, []))
+        elif selected_level == 3:
+            filtered_tags.extend(tag_groups.get(3, []))
+
+        with col2:
+            if filtered_tags:
+                selected_tag = st.selectbox(
+                    "📌 태그 선택:",
+                    sorted(filtered_tags),
+                    help="분석할 태그를 선택하세요"
+                )
+            else:
+                st.warning(f"{selected_level}차 태그가 없습니다.")
+                return
+
+    with col4:
         sort_by = st.selectbox(
             "🔽 정렬:",
             ["최신순", "오래된순", "이름순", "ID순"]
@@ -324,8 +330,8 @@ def render_tag_management_ui():
     # 3. 현재 JSON 파일 로드
     current_profile_ids = load_tag_annotation(selected_tag)
 
-    with col4:
-        st.metric("현재 선택", f"{len(current_profile_ids)}개")
+    with col5:
+        st.markdown(f"**선택**: {len(current_profile_ids)}개")
 
     # 4. DB에서 모든 프로필 조회
     all_profiles = get_all_profiles_with_images(sort_by)
@@ -399,7 +405,7 @@ def render_tag_management_ui():
                 is_checked = st.checkbox(
                     f"**{profile['name']}**\n`ID:{profile['id']}`",
                     value=(profile['id'] in current_profile_ids),
-                    key=f"check_{profile['id']}"
+                    key=f"check_{selected_tag}_{profile['id']}"
                 )
 
                 checkbox_states[profile['id']] = {
