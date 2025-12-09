@@ -5,7 +5,7 @@
 ## 모듈별 설명 + 주요 함수
 - `tag_manager.py` (태그 UI/DB 동기화)
   - `render_tag_management_ui`: Streamlit에서 레벨/태그 선택 후 프로필 체크, JSON 저장·DB 동기화 트리거.
-  - `save_tag_annotation`/`load_tag_annotation`: level_n 디렉토리에 태그별 JSON 저장/로드.
+  - `save_tag_annotation`/`load_tag_annotation`: source_data/tags/level_n 디렉토리에 태그별 JSON 저장/로드( description 미사용 ).
   - `sync_json_to_db`: `ReferenceTag`/`TagDefinition`을 JSON 기준으로 upsert.
   - `get_db_level`/`get_fs_level`: `tag_classification.json` 레벨을 사용해 DB/파일 레벨 매핑.
 - `tag_processor.py` (태그 정의/분석)
@@ -36,7 +36,7 @@
 ```mermaid
 sequenceDiagram
     participant UI as Streamlit<br/>render_tag_management_ui
-    participant File as save_tag_annotation<br/>JSON(source_data/tags/level_n/tag.json)
+    participant File as save_tag_annotation<br/>JSON(source_data/tags/level_n/tag.json<br/>description 미사용)
     participant Sync as sync_json_to_db
     participant DB as DatabaseManager<br/>ReferenceTag/TagDefinition
 

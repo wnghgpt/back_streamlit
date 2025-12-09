@@ -136,9 +136,8 @@ def save_tag_annotation(tag_name, selected_profiles):
     # JSON 데이터 구성
     tag_data = {
         "tag_name": tag_name,
-        # DB 의미의 레벨 저장 (0:추상,1:1차,2:2차)
+        # DB 의미의 레벨 저장
         "tag_level": db_level,
-        "description": "",
         "profiles": selected_profiles,
         "last_updated": datetime.now().isoformat()
     }
@@ -221,7 +220,6 @@ def sync_json_to_db(json_path):
         tag_def = session.query(TagDefinition).filter_by(tag_name=tag_name).first()
         if tag_def:
             tag_def.tag_level = tag_level
-            tag_def.description = tag_data.get('description') or ""
             tag_def.profile_ids = profile_ids_sorted
             tag_def.profile_names = profile_names_sorted
             tag_def.profile_count = len(profile_ids_sorted)
@@ -230,7 +228,6 @@ def sync_json_to_db(json_path):
             tag_def = TagDefinition(
                 tag_name=tag_name,
                 tag_level=tag_level,
-                description=tag_data.get('description') or "",
                 profile_ids=profile_ids_sorted,
                 profile_names=profile_names_sorted,
                 profile_count=len(profile_ids_sorted),
